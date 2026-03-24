@@ -1,78 +1,81 @@
 task.spawn(function()
     local player = game.Players.LocalPlayer
     local char = player.Character
-    local human = char:FindFirstChildOfClass("Humanoid")
+    local human = char and char:FindFirstChildOfClass("Humanoid")
     local seat = human and human.SeatPart
     
     if not (seat and seat:IsA("VehicleSeat")) then 
-        print("ОШИБКА: Сядь в машину!")
+        print("ОШИБКА: Сначала сядь в машину!")
         return 
     end
 
-    local car = seat.Parent
-    while car and not car:IsA("Model") do car = car.Parent end
-
-    -- Твои координаты гаража
+    -- Твои координаты
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- 1. Снимаем все "якоря" (на всякий случай)
-    for _, p in pairs(car:GetDescendants()) do
-        if p:IsA("BasePart") then p.Anchored = false end
+    -- 1. Очистка старых сил, если они остались
+    for _, v in pairs(seat:GetChildren()) do
+        if v:IsA("BodyVelocity") or v:IsA("BodyGyro") then v:Destroy() end
     end
 
-    -- 2. Создаем физические двигатели
+    -- 2. Создаем "Анти-гравитацию" и "Гироскоп" (для ровного полета)
     local bv = Instance.new("BodyVelocity", seat)
     bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bv.Velocity = Vector3.new(0, 0, 0) -- Сначала стоим
+    bv.Velocity = Vector3.new(0, 0, 0)
 
     local bg = Instance.new("BodyGyro", seat)
     bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-    bg.D = 500 -- Плавность поворота
-    bg.CFrame = seat.CFrame -- Держим текущий поворот
+    bg.D = 500 
+    bg.CFrame = seat.CFrame -- Фиксируем текущий поворот
 
-    -- Функция для полета (двигаем физикой)
-    local function flyTo(targetPos, speed)
-        while (targetPos - seat.Position).Magnitude > 5 do
-            -- Всегда смотрим строго горизонтально на цель
-            local lookPos = Vector3.new(targetPos.X, seat.Position.Y, targetPos.Z)
-            bg.CFrame = CFrame.lookAt(seat.Position, lookPos)
-            
-            -- Толкаем машину вперед
-            bv.Velocity = (targetPos - seat.Position).Unit * speed
-            task.wait()
-        end
-        bv.Velocity = Vector3.new(0, 0, 0)
-    end
+    -- === МАРШРУТ ===
 
-    -- === ТВОЙ МАРШРУТ (ФИЗИЧЕСКИЙ) ===
+    -- ФАЗА 1: 100 метров прямо по земле
+    print("Этап 1: Разгон прямо")
+    bv.Velocity = seat.CFrame.LookVector * 25
+    task.wait(4) -- Едем 4 секунды (около 100м)
 
-    print("1. Едем 100 метров прямо...")
-    local forwardPos = (seat.CFrame * CFrame.new(0, 0, -100)).Position
-    flyTo(forwardPos, 40) -- Скорость 40
-
-    print("2. Взлет на 70 метров...")
-    local upPos = seat.Position + Vector3.new(0, flyHeight, 0)
-    -- Поднимаемся вертикально, сохраняя направление
+    -- ФАЗА 2: Ровный взлет вверх на 70 метров
+    print("Этап 2: Взлет на 70м")
     bv.Velocity = Vector3.new(0, 25, 0)
     task.wait(flyHeight / 25)
     bv.Velocity = Vector3.new(0, 0, 0)
 
-    print("3. Поворот НАЛЕВО...")
+    -- ФАЗА 3: Поворот носа строго НАЛЕВО (на 90 градусов)
+    print("Этап 3: Поворот налево")
     bg.CFrame = bg.CFrame * CFrame.Angles(0, math.rad(90), 0)
     task.wait(2)
 
-    print("4. Перелет к Гаражу...")
-    -- Сначала летим в точку НАД гаражом
-    local overGarage = Vector3.new(garagePos.X, seat.Position.Y, garagePos.Z)
-    flyTo(overGarage, 60) -- Летим быстро
+    -- ФАЗА 4: Наведение на Гараж и ПЕРЕЛЕТ (без наклонов)
+    print("Этап 4: Летим к Гаражу")
+    -- Вычисляем направление на гараж, но делаем его ПЛОСКИМ (без наклона вниз)
+    local direction = (garagePos - seat.Position).Unit
+    local flatDirection = Vector3.new(direction.X, 0, direction.Z).Unit
+    
+    -- Разворачиваем нос на гараж
+    bg.CFrame = CFrame.lookAt(seat.Position, seat.Position + flatDirection)
+    task.wait(1.5)
+    
+    -- Летим вперед на большой скорости
+    bv.Velocity = flatDirection * 55
+    
+    -- Ждем, пока не окажемся над точкой гаража
+    while (Vector3.new(garagePos.X, seat.Position.Y, garagePos.Z) - seat.Position).Magnitude > 10 do
+        task.wait()
+    end
+    bv.Velocity = Vector3.new(0, 0, 0)
 
-    print("5. Мягкая посадка...")
-    flyTo(garagePos, 20) -- Медленно вниз
+    -- ФАЗА 5: Мягкая посадка
+    print("Этап 5: Посадка")
+    bv.Velocity = Vector3.new(0, -20, 0)
+    while (seat.Position.Y - garagePos.Y) > 5 do
+        task.wait()
+    end
 
-    -- Удаляем силы, машина снова обычная
-    task.wait(0.5)
+    -- ФИНАЛ: Тормозим и удаляем силы
+    bv.Velocity = Vector3.new(0, 0, 0)
+    task.wait(1) -- Ждем стабилизации, чтобы не откинуло назад
     bv:Destroy()
     bg:Destroy()
-    print("Прибыли в гараж!")
+    print("Успешно приземлились!")
 end)
