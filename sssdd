@@ -2,34 +2,37 @@ task.spawn(function()
     local player = game.Players.LocalPlayer
     local TweenService = game:GetService("TweenService")
     local char = player.Character
-    local human = char and char:FindFirstChildOfClass("Humanoid")
-    local seat = human and human.SeatPart
     
-    -- Проверяем, сидишь ли ты в водительском кресле
-    if not (seat and seat:IsA("VehicleSeat")) then 
-        print("Сначала сядь в машину!")
-        return 
+    -- Определяем, что двигать: машину (если сидим) или самого игрока
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local human = char:FindFirstChildOfClass("Humanoid")
+    local targetToMove = root
+
+    if human and human.SeatPart then
+        targetToMove = human.SeatPart -- Если в машине, двигаем сиденье
     end
 
-    -- Координаты Гаража (База бандитов)
+    if not targetToMove then return end
+
+    -- Координаты Гаража (Склад)
     local garagePos = Vector3.new(-920, 70, -1500) 
     local flyHeight = 70
 
-    -- Очистка невидимых барьеров в небе
+    -- Чистим невидимые стены в небе
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
     end
 
     -- Настройка "двигателей" (физика без гравитации)
-    local att0 = Instance.new("Attachment", seat)
+    local att0 = Instance.new("Attachment", targetToMove)
     local att1 = Instance.new("Attachment", workspace.Terrain)
-    att1.WorldCFrame = seat.WorldCFrame
+    att1.WorldCFrame = targetToMove.WorldCFrame
 
-    local ap = Instance.new("AlignPosition", seat)
+    local ap = Instance.new("AlignPosition", targetToMove)
     ap.Attachment0 = att0; ap.Attachment1 = att1
     ap.MaxForce = math.huge; ap.Responsiveness = 200
 
-    local ao = Instance.new("AlignOrientation", seat)
+    local ao = Instance.new("AlignOrientation", targetToMove)
     ao.Attachment0 = att0; ao.Attachment1 = att1
     ao.MaxTorque = math.huge; ao.Responsiveness = 200; ao.RigidityEnabled = true
 
@@ -41,27 +44,26 @@ task.spawn(function()
         tween.Completed:Wait()
     end
 
-    -- === ТВОЙ ИДЕАЛЬНЫЙ МАРШРУТ ===
+    -- === ТВОЙ МАРШРУТ ===
 
-    print("ФАЗА 1: Едем 100 метров прямо...")
-    move(seat.WorldCFrame * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
+    print("Старт: 100 метров прямо...")
+    move(targetToMove.WorldCFrame * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
 
-    print("ФАЗА 2: Взлетаем на 70 метров...")
+    print("Взлет: на 70 метров...")
     move(att1.WorldCFrame * CFrame.new(0, flyHeight, 0), 3, Enum.EasingStyle.Quad)
 
-    print("ФАЗА 3: Резкий поворот НАЛЕВО...")
-    -- Поворачиваемся на 90 градусов влево относительно текущего курса
+    print("Маневр: Поворот НАЛЕВО...")
+    -- Поворачиваемся на 90 градусов влево
     move(att1.WorldCFrame * CFrame.Angles(0, math.rad(90), 0), 2, Enum.EasingStyle.Quad)
 
-    print("ФАЗА 4: Летим прямиком в Гараж!")
-    -- Высчитываем направление на базу и летим по прямой
+    print("Перелет: Курс на Гараж!")
     local finalLook = CFrame.new(garagePos, garagePos + (garagePos - att1.WorldPosition).Unit)
     move(finalLook, 15, Enum.EasingStyle.Linear)
 
-    print("ФАЗА 5: Мягкая посадка...")
+    print("Финиш: Мягкая посадка...")
     move(att1.WorldCFrame * CFrame.new(0, -flyHeight, 0), 3, Enum.EasingStyle.Quad)
 
-    -- Удаляем силы, машина снова подчиняется физике игры
+    -- Удаляем силы
     ap:Destroy(); ao:Destroy(); att0:Destroy(); att1:Destroy()
-    print("Успешный побег!")
+    print("Прибыли в гараж!")
 end)
