@@ -2,65 +2,89 @@ task.spawn(function()
     local player = game.Players.LocalPlayer
     local TweenService = game:GetService("TweenService")
     local char = player.Character
-    local seat = char and char:FindFirstChildOfClass("Humanoid") and char:FindFirstChildOfClass("Humanoid").SeatPart
-    
-    if not (seat and seat:IsA("VehicleSeat")) then return end
-    local car = seat.Parent
+    if not char then return end
 
-    -- Настройки
+    local human = char:FindFirstChildOfClass("Humanoid")
+    local seat = human and human.SeatPart
+    if not seat then print("Сядь в машину!") return end
+
+    local car = seat.Parent
+    while car and not car:IsA("Model") do car = car.Parent end
+
+    -- === НАСТРОЙКИ (ТВОИ КООРДИНАТЫ ГАРАЖА) ===
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- 1. Создаем "двигатели" (Velocity не ломает колеса)
-    local bv = Instance.new("BodyVelocity", seat)
-    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bv.Velocity = Vector3.new(0, 0, 0)
-
-    local bg = Instance.new("BodyGyro", seat)
-    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-    bg.CFrame = seat.CFrame
-
-    -- Функция для плавного полета через изменение скорости
-    local function fly(targetPos, speed)
-        local distance = (targetPos - seat.Position).Magnitude
-        local duration = distance / speed
-        
-        -- Поворачиваем нос строго горизонтально к цели
-        local lookTarget = Vector3.new(targetPos.X, seat.Position.Y, targetPos.Z)
-        bg.CFrame = CFrame.lookAt(seat.Position, lookTarget)
-        
-        -- Задаем скорость движения
-        bv.Velocity = (targetPos - seat.Position).Unit * speed
-        task.wait(duration)
-        bv.Velocity = Vector3.new(0, 0, 0)
+    -- 1. ПОДГОТОВКА: Замораживаем машину и чистим стены
+    local wheels = {}
+    for _, p in pairs(car:GetDescendants()) do
+        if p:IsA("BasePart") then 
+            p.Anchored = true 
+            -- Сохраняем колеса для анимации вращения
+            if p.Name:lower():find("wheel") or p.Name:lower():find("tire") then
+                table.insert(wheels, p)
+            end
+        end
     end
 
-    -- === МАРШРУТ (КОЛЕСА БУДУТ НА МЕСТЕ) ===
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
+    end
 
-    print("1. Разгон 100м")
-    fly((seat.CFrame * CFrame.new(0, 0, -100)).Position, 30)
+    -- Анимация крутящихся колес (чтобы они "были")
+    local spinning = true
+    task.spawn(function()
+        while spinning do
+            for _, wheel in pairs(wheels) do
+                wheel.CFrame = wheel.CFrame * CFrame.Angles(0.3, 0, 0)
+            end
+            task.wait()
+        end
+    end)
 
-    print("2. Взлет вверх")
-    fly(seat.Position + Vector3.new(0, flyHeight, 0), 25)
+    -- Функция для ИДЕАЛЬНО ровного перемещения
+    local function move(targetCF, duration, style)
+        local val = Instance.new("CFrameValue")
+        val.Value = car:GetPivot()
+        local conn = val.Changed:Connect(function() car:PivotTo(val.Value) end)
+        
+        local tween = TweenService:Create(val, TweenInfo.new(duration, style or Enum.EasingStyle.Linear), {Value = targetCF})
+        tween:Play()
+        tween.Completed:Wait()
+        
+        conn:Disconnect()
+        val:Destroy()
+    end
+
+    -- === МАРШРУТ (БЕЗ ГЛЮКОВ) ===
+
+    print("1. Едем прямо 100м")
+    move(car:GetPivot() * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
+
+    print("2. Ровно вверх на 70м")
+    local upPos = car:GetPivot().Position + Vector3.new(0, flyHeight, 0)
+    move(CFrame.new(upPos) * (car:GetPivot() - car:GetPivot().Position), 3, Enum.EasingStyle.Quad)
 
     print("3. Поворот НАЛЕВО")
-    bg.CFrame = bg.CFrame * CFrame.Angles(0, math.rad(90), 0)
-    task.wait(1.5)
+    move(car:GetPivot() * CFrame.Angles(0, math.rad(90), 0), 2)
 
-    print("4. Наведение на Гараж")
-    local garageAtHeight = Vector3.new(garagePos.X, seat.Position.Y, garagePos.Z)
-    bg.CFrame = CFrame.lookAt(seat.Position, garageAtHeight)
-    task.wait(1.5)
+    print("4. Разворот и Перелет к Гаражу")
+    -- Сначала смотрим на цель
+    local lookCF = CFrame.lookAt(car:GetPivot().Position, Vector3.new(garagePos.X, car:GetPivot().Position.Y, garagePos.Z))
+    move(lookCF, 2)
+    -- Летим носом вперед
+    local flyTo = CFrame.new(garagePos + Vector3.new(0, flyHeight, 0), garagePos)
+    move(flyTo, 12)
 
-    print("5. Перелет")
-    fly(garageAtHeight, 50) -- Летим быстрее
+    print("5. Посадка в Гараж")
+    move(CFrame.new(garagePos) * (lookCF - lookCF.Position), 3, Enum.EasingStyle.Quad)
 
-    print("6. Посадка")
-    fly(garagePos, 20)
-
-    -- Финал: Удаляем силы плавно
+    -- ФИНАЛ: Останавливаем колеса, возвращаем физику
+    spinning = false
     task.wait(0.5)
-    bv:Destroy()
-    bg:Destroy()
-    print("Приехали! Все детали на месте.")
+    for _, p in pairs(car:GetDescendants()) do
+        if p:IsA("BasePart") then p.Anchored = false end
+    end
+
+    print("Миссия завершена! Машина здесь.")
 end)
