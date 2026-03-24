@@ -5,30 +5,34 @@ task.spawn(function()
     local human = char and char:FindFirstChildOfClass("Humanoid")
     local seat = human and human.SeatPart
     
-    -- 1. Проверка: сидим ли мы в ПОЛИЦЕЙСКОЙ машине
+    -- 1. Проверяем, сидим ли мы вообще в транспорте
     if not (seat and seat:IsA("VehicleSeat")) then 
-        print("Сядь в машину!")
+        print("Ошибка: Сядь в машину на место водителя!")
         return 
     end
 
     local car = seat.Parent
+    -- Ищем корень модели машины
     while car and not car:IsA("Model") do car = car.Parent end
+
+    -- Проверка на полицию (ищем мигалки/сирены на крыше)
+    local isPolice = car:FindFirstChild("Siren") or car:FindFirstChild("Sirens") or car.Name:lower():find("police")
     
-    if not car.Name:lower():find("police") then
-        print("Это не полицейская машина! Скрипт только для полиции.")
+    if not isPolice then
+        print("Это не полицейская машина! Сядь в Squad Car.")
         return
     end
 
-    -- 2. Настройки (Координаты гаража бандитов/склада)
+    -- 2. Настройки (Гараж бандитов)
     local garagePos = Vector3.new(-920, 70, -1500) 
     local flyHeight = 70
 
-    -- Очистка невидимых стен в небе
+    -- Удаляем невидимые стены в небе
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
     end
 
-    -- 3. Создание физических "двигателей"
+    -- 3. Создаем "двигатели"
     local att0 = Instance.new("Attachment", seat)
     local att1 = Instance.new("Attachment", workspace.Terrain)
     att1.WorldCFrame = seat.WorldCFrame
@@ -41,7 +45,6 @@ task.spawn(function()
     ao.Attachment0 = att0; ao.Attachment1 = att1
     ao.MaxTorque = math.huge; ao.Responsiveness = 200; ao.RigidityEnabled = true
 
-    -- Функция для плавного движения
     local function move(targetCF, duration, style)
         local info = TweenInfo.new(duration, style or Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
         local tween = TweenService:Create(att1, info, {WorldCFrame = targetCF})
@@ -49,27 +52,24 @@ task.spawn(function()
         tween.Completed:Wait()
     end
 
-    -- === МАРШРУТ ===
-
-    print("Шаг 1: Едем 100 метров прямо...")
+    -- === ТВОЙ МАРШРУТ ===
+    print("Шаг 1: 100 метров прямо...")
     move(seat.WorldCFrame * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
 
     print("Шаг 2: Взлет на 70 метров...")
     move(att1.WorldCFrame * CFrame.new(0, flyHeight, 0), 3, Enum.EasingStyle.Quad)
 
-    print("Шаг 3: Поворот налево...")
-    -- Поворот на 90 градусов влево (math.rad(90))
+    print("Шаг 3: Поворот корпуса налево...")
     move(att1.WorldCFrame * CFrame.Angles(0, math.rad(90), 0), 2, Enum.EasingStyle.Quad)
 
-    print("Шаг 4: Перелет к Гаражу Бандитов...")
-    -- Направляем нос машины к гаражу и летим по прямой
+    print("Шаг 4: Перелет к Гаражу...")
     local finalLook = CFrame.new(garagePos, garagePos + (garagePos - att1.WorldPosition).Unit)
     move(finalLook, 15, Enum.EasingStyle.Linear)
 
-    print("Шаг 5: Мягкая посадка...")
+    print("Шаг 5: Посадка...")
     move(att1.WorldCFrame * CFrame.new(0, -flyHeight, 0), 3, Enum.EasingStyle.Quad)
 
-    -- Удаляем силы, возвращаем физику
+    -- Удаляем силы
     ap:Destroy(); ao:Destroy(); att0:Destroy(); att1:Destroy()
-    print("Миссия выполнена!")
+    print("Прибыли!")
 end)
