@@ -5,73 +5,66 @@ task.spawn(function()
     if not char then return end
 
     local human = char:FindFirstChildOfClass("Humanoid")
-    local target = (human and human.SeatPart) or char:FindFirstChild("HumanoidRootPart")
-    if not target then return end
+    local seat = human and human.SeatPart
+    if not seat then print("Сядь в машину!") return end
 
-    -- === ТВОИ ТОЧНЫЕ КООРДИНАТЫ ГАРАЖА ===
+    local car = seat.Parent
+    while car and not car:IsA("Model") do car = car.Parent end
+
+    -- === НАСТРОЙКИ ===
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- Очистка невидимых стен
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
+    -- 1. ЗАМОРАЖИВАЕМ МАШИНУ (Чтобы не ломалась и не падала)
+    for _, p in pairs(car:GetDescendants()) do
+        if p:IsA("BasePart") then p.Anchored = true end
     end
 
-    -- Настройка "двигателей"
-    local att0 = Instance.new("Attachment", target)
-    local att1 = Instance.new("Attachment", workspace.Terrain)
-    att1.CFrame = target.CFrame 
-
-    local ap = Instance.new("AlignPosition", target)
-    ap.Attachment0 = att0; ap.Attachment1 = att1
-    ap.MaxForce = math.huge; ap.Responsiveness = 200
-
-    local ao = Instance.new("AlignOrientation", target)
-    ao.Attachment0 = att0; ao.Attachment1 = att1
-    ao.MaxTorque = math.huge; ao.Responsiveness = 200; ao.RigidityEnabled = true
-
-    -- Функция для перемещения с ПРАВИЛЬНЫМ поворотом носа
-    local function move(targetPos, duration, style)
-        -- Создаем CFrame, который смотрит из текущей точки в целевую
-        local targetCF = CFrame.new(targetPos, targetPos + (targetPos - att1.Position).Unit)
+    -- Функция для плавного движения всей модели БЕЗ физики
+    local function move(targetCF, duration, style)
+        local flyValue = Instance.new("CFrameValue")
+        flyValue.Value = car:GetPivot()
         
-        local info = TweenInfo.new(duration, style or Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
-        local tween = TweenService:Create(att1, info, {CFrame = targetCF})
+        local connection = flyValue.Changed:Connect(function()
+            car:PivotTo(flyValue.Value)
+        end)
+
+        local tween = TweenService:Create(flyValue, TweenInfo.new(duration, style or Enum.EasingStyle.Linear), {Value = targetCF})
         tween:Play()
         tween.Completed:Wait()
+        
+        connection:Disconnect()
+        flyValue:Destroy()
     end
 
-    -- === МАРШРУТ ПОБЕГА (Всегда носом вперёд) ===
+    -- === МАРШРУТ (ИДЕАЛЬНО ПРЯМО) ===
 
-    print("Шаг 1: 100м прямо")
-    local p1 = (att1.CFrame * CFrame.new(0, 0, -100)).Position
-    move(p1, 4, Enum.EasingStyle.Quad)
+    print("1. Едем прямо 100м")
+    move(car:GetPivot() * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
 
-    print("Шаг 2: Взлет на 70м (сохраняем направление)")
-    local p2 = p1 + Vector3.new(0, flyHeight, 0)
-    move(p2, 3, Enum.EasingStyle.Quad)
+    print("2. Взлет вверх на 70м")
+    local p2 = car:GetPivot().Position + Vector3.new(0, flyHeight, 0)
+    -- Сохраняем поворот, просто поднимаем
+    move(CFrame.new(p2) * (car:GetPivot() - car:GetPivot().Position), 3, Enum.EasingStyle.Quad)
 
-    print("Шаг 3: Поворот носа НАЛЕВО")
-    -- Здесь мы просто крутим аттачмент на месте
-    local turnLeftCF = att1.CFrame * CFrame.Angles(0, math.rad(90), 0)
-    TweenService:Create(att1, TweenInfo.new(2, Enum.EasingStyle.Quad), {CFrame = turnLeftCF}):Play()
-    task.wait(2.1)
+    print("3. Поворот НАЛЕВО на 90 градусов")
+    move(car:GetPivot() * CFrame.Angles(0, math.rad(90), 0), 2, Enum.EasingStyle.Quad)
 
-    print("Шаг 4: Разворот носом строго на Гараж")
-    local p3 = att1.Position
-    local lookAtGarage = CFrame.new(p3, Vector3.new(garagePos.X, p3.Y, garagePos.Z))
-    TweenService:Create(att1, TweenInfo.new(2, Enum.EasingStyle.Quad), {CFrame = lookAtGarage}):Play()
-    task.wait(2.1)
+    print("4. Разворот к Гаражу и Перелет")
+    -- Сначала смотрим на гараж (горизонтально)
+    local targetPosOnHeight = Vector3.new(garagePos.X, car:GetPivot().Position.Y, garagePos.Z)
+    move(CFrame.lookAt(car:GetPivot().Position, targetPosOnHeight), 2)
+    
+    -- Летим к точке над гаражом
+    move(CFrame.lookAt(targetPosOnHeight, targetPosOnHeight + (targetPosOnHeight - car:GetPivot().Position).Unit), 12)
 
-    print("Шаг 5: Перелет носом вперёд")
-    -- Летим в точку над гаражом, смотря прямо на неё
-    local p4 = garagePos + Vector3.new(0, flyHeight, 0)
-    move(p4, 12, Enum.EasingStyle.Linear)
+    print("5. Посадка")
+    -- Опускаемся и размораживаем
+    move(CFrame.new(garagePos, garagePos + (targetPosOnHeight - car:GetPivot().Position).Unit), 3)
 
-    print("Шаг 6: Посадка (носом к гаражу)")
-    move(garagePos, 3, Enum.EasingStyle.Quad)
-
-    -- Удаляем силы
-    ap:Destroy(); ao:Destroy(); att0:Destroy(); att1:Destroy()
-    print("Миссия выполнена! Припарковались носом вперёд.")
+    -- 2. ВОЗВРАЩАЕМ ФИЗИКУ
+    for _, p in pairs(car:GetDescendants()) do
+        if p:IsA("BasePart") then p.Anchored = false end
+    end
+    print("Прибыли! Физика включена.")
 end)
