@@ -1,82 +1,78 @@
 task.spawn(function()
     local player = game.Players.LocalPlayer
-    local TweenService = game:GetService("TweenService")
     local char = player.Character
-    local human = char and char:FindFirstChildOfClass("Humanoid")
+    local human = char:FindFirstChildOfClass("Humanoid")
     local seat = human and human.SeatPart
     
     if not (seat and seat:IsA("VehicleSeat")) then 
-        print("Сядь в машину!")
+        print("ОШИБКА: Сядь в машину!")
         return 
     end
+
+    local car = seat.Parent
+    while car and not car:IsA("Model") do car = car.Parent end
 
     -- Твои координаты гаража
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- 1. Создаем систему "Жесткой сцепки" как в твоем примере
-    local attachment = Instance.new("Attachment", seat)
-    local targetAttachment = Instance.new("Attachment", workspace.Terrain)
-    targetAttachment.WorldCFrame = seat.WorldCFrame
-
-    local ap = Instance.new("AlignPosition", seat)
-    ap.Attachment0 = attachment
-    ap.Attachment1 = targetAttachment
-    ap.MaxForce = math.huge
-    ap.Responsiveness = 200
-
-    local ao = Instance.new("AlignOrientation", seat)
-    ao.Attachment0 = attachment
-    ao.Attachment1 = targetAttachment
-    ao.MaxTorque = math.huge
-    ao.Responsiveness = 200
-    ao.RigidityEnabled = true -- ТОТ САМЫЙ ПАРАМЕТР (ровный полет)
-
-    -- Функция для движения целевой точки (машина потянется за ней)
-    local function moveTarget(targetCF, duration)
-        local tween = TweenService:Create(targetAttachment, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
-            WorldCFrame = targetCF
-        })
-        tween:Play()
-        tween.Completed:Wait()
+    -- 1. Снимаем все "якоря" (на всякий случай)
+    for _, p in pairs(car:GetDescendants()) do
+        if p:IsA("BasePart") then p.Anchored = false end
     end
 
-    -- === ТВОЙ МАРШРУТ ===
+    -- 2. Создаем физические двигатели
+    local bv = Instance.new("BodyVelocity", seat)
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.Velocity = Vector3.new(0, 0, 0) -- Сначала стоим
 
-    print("1. 100 метров прямо")
-    -- Едем прямо, сохраняя текущий наклон
-    moveTarget(targetAttachment.WorldCFrame * CFrame.new(0, 0, -100), 4)
+    local bg = Instance.new("BodyGyro", seat)
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.D = 500 -- Плавность поворота
+    bg.CFrame = seat.CFrame -- Держим текущий поворот
 
-    print("2. Взлет на 70 метров")
-    -- Поднимаем точку вверх, но нос машины не задираем (горизонтально)
-    local upPos = targetAttachment.WorldPosition + Vector3.new(0, flyHeight, 0)
-    moveTarget(CFrame.new(upPos, upPos + targetAttachment.WorldCFrame.LookVector), 3)
+    -- Функция для полета (двигаем физикой)
+    local function flyTo(targetPos, speed)
+        while (targetPos - seat.Position).Magnitude > 5 do
+            -- Всегда смотрим строго горизонтально на цель
+            local lookPos = Vector3.new(targetPos.X, seat.Position.Y, targetPos.Z)
+            bg.CFrame = CFrame.lookAt(seat.Position, lookPos)
+            
+            -- Толкаем машину вперед
+            bv.Velocity = (targetPos - seat.Position).Unit * speed
+            task.wait()
+        end
+        bv.Velocity = Vector3.new(0, 0, 0)
+    end
 
-    print("3. Поворот НАЛЕВО")
-    -- Поворачиваем целевую точку на 90 градусов
-    moveTarget(targetAttachment.WorldCFrame * CFrame.Angles(0, math.rad(90), 0), 2)
+    -- === ТВОЙ МАРШРУТ (ФИЗИЧЕСКИЙ) ===
 
-    print("4. Перелет к ГАРАЖУ")
-    -- Высчитываем путь до гаража строго по горизонтали (чтобы не смотреть вниз/вверх)
-    local direction = (garagePos - targetAttachment.WorldPosition).Unit
-    local lookAtGarage = CFrame.new(garagePos + Vector3.new(0, flyHeight, 0), garagePos + Vector3.new(0, flyHeight, 0) + direction)
-    
-    -- Сначала плавно поворачиваем целевую точку на гараж
-    local turnCF = CFrame.new(targetAttachment.WorldPosition, targetAttachment.WorldPosition + direction)
-    moveTarget(turnCF, 2)
-    
-    -- Теперь летим вперед до гаража
-    moveTarget(lookAtGarage, 12)
+    print("1. Едем 100 метров прямо...")
+    local forwardPos = (seat.CFrame * CFrame.new(0, 0, -100)).Position
+    flyTo(forwardPos, 40) -- Скорость 40
 
-    print("5. Посадка")
-    -- Опускаем точку вниз, машина приземлится за ней
-    moveTarget(CFrame.new(garagePos, garagePos + direction), 3)
+    print("2. Взлет на 70 метров...")
+    local upPos = seat.Position + Vector3.new(0, flyHeight, 0)
+    -- Поднимаемся вертикально, сохраняя направление
+    bv.Velocity = Vector3.new(0, 25, 0)
+    task.wait(flyHeight / 25)
+    bv.Velocity = Vector3.new(0, 0, 0)
 
-    -- Удаляем всё
+    print("3. Поворот НАЛЕВО...")
+    bg.CFrame = bg.CFrame * CFrame.Angles(0, math.rad(90), 0)
+    task.wait(2)
+
+    print("4. Перелет к Гаражу...")
+    -- Сначала летим в точку НАД гаражом
+    local overGarage = Vector3.new(garagePos.X, seat.Position.Y, garagePos.Z)
+    flyTo(overGarage, 60) -- Летим быстро
+
+    print("5. Мягкая посадка...")
+    flyTo(garagePos, 20) -- Медленно вниз
+
+    -- Удаляем силы, машина снова обычная
     task.wait(0.5)
-    ap:Destroy()
-    ao:Destroy()
-    attachment:Destroy()
-    targetAttachment:Destroy()
-    print("Прибыли!")
+    bv:Destroy()
+    bg:Destroy()
+    print("Прибыли в гараж!")
 end)
