@@ -12,12 +12,12 @@ task.spawn(function()
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- Очистка невидимых стен
+    -- Очистка стен
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
     end
 
-    -- Настройка "двигателей"
+    -- Настройка сил
     local att0 = Instance.new("Attachment", target)
     local att1 = Instance.new("Attachment", workspace.Terrain)
     att1.CFrame = target.CFrame 
@@ -28,12 +28,14 @@ task.spawn(function()
 
     local ao = Instance.new("AlignOrientation", target)
     ao.Attachment0 = att0; ao.Attachment1 = att1
-    ao.MaxTorque = math.huge; ao.Responsiveness = 200; ao.RigidityEnabled = true
+    ao.MaxTorque = math.huge; ao.Responsiveness = 200
+    ao.RigidityEnabled = true -- Жесткая фиксация
 
-    -- Функция для перемещения с ПРАВИЛЬНЫМ поворотом носа
-    local function move(targetPos, duration, style)
-        -- Создаем CFrame, который смотрит из текущей точки в целевую
-        local targetCF = CFrame.new(targetPos, targetPos + (targetPos - att1.Position).Unit)
+    -- Функция для полета БЕЗ наклонов (горизонтально)
+    local function moveStraight(targetPos, duration, style)
+        -- ВАЖНО: Мы зануляем разницу по высоте для поворота, чтобы машина не задирала нос
+        local lookPos = Vector3.new(targetPos.X, att1.Position.Y, targetPos.Z)
+        local targetCF = CFrame.new(targetPos, lookPos)
         
         local info = TweenInfo.new(duration, style or Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
         local tween = TweenService:Create(att1, info, {CFrame = targetCF})
@@ -41,37 +43,32 @@ task.spawn(function()
         tween.Completed:Wait()
     end
 
-    -- === МАРШРУТ ПОБЕГА (Всегда носом вперёд) ===
+    -- === МАРШРУТ (БЕЗ ВЕРТИКАЛЬНЫХ ТРЮКОВ) ===
 
-    print("Шаг 1: 100м прямо")
+    print("Шаг 1: 100м прямо по земле")
     local p1 = (att1.CFrame * CFrame.new(0, 0, -100)).Position
-    move(p1, 4, Enum.EasingStyle.Quad)
+    moveStraight(p1, 4, Enum.EasingStyle.Quad)
 
-    print("Шаг 2: Взлет на 70м (сохраняем направление)")
+    print("Шаг 2: Вертикальный взлет (сохраняем горизонт)")
     local p2 = p1 + Vector3.new(0, flyHeight, 0)
-    move(p2, 3, Enum.EasingStyle.Quad)
+    -- При взлете смотрим туда же, куда смотрели
+    local liftCF = CFrame.new(p2, p2 + att1.CFrame.LookVector)
+    TweenService:Create(att1, TweenInfo.new(3, Enum.EasingStyle.Quad), {CFrame = liftCF}):Play()
+    task.wait(3.1)
 
-    print("Шаг 3: Поворот носа НАЛЕВО")
-    -- Здесь мы просто крутим аттачмент на месте
-    local turnLeftCF = att1.CFrame * CFrame.Angles(0, math.rad(90), 0)
-    TweenService:Create(att1, TweenInfo.new(2, Enum.EasingStyle.Quad), {CFrame = turnLeftCF}):Play()
-    task.wait(2.1)
-
-    print("Шаг 4: Разворот носом строго на Гараж")
-    local p3 = att1.Position
-    local lookAtGarage = CFrame.new(p3, Vector3.new(garagePos.X, p3.Y, garagePos.Z))
+    print("Шаг 3: Разворот носа на Гараж")
+    local lookAtGarage = CFrame.new(att1.Position, Vector3.new(garagePos.X, att1.Position.Y, garagePos.Z))
     TweenService:Create(att1, TweenInfo.new(2, Enum.EasingStyle.Quad), {CFrame = lookAtGarage}):Play()
     task.wait(2.1)
 
-    print("Шаг 5: Перелет носом вперёд")
-    -- Летим в точку над гаражом, смотря прямо на неё
-    local p4 = garagePos + Vector3.new(0, flyHeight, 0)
-    move(p4, 12, Enum.EasingStyle.Linear)
+    print("Шаг 4: Перелет носом вперед")
+    local p3 = Vector3.new(garagePos.X, att1.Position.Y, garagePos.Z)
+    moveStraight(p3, 12, Enum.EasingStyle.Linear)
 
-    print("Шаг 6: Посадка (носом к гаражу)")
-    move(garagePos, 3, Enum.EasingStyle.Quad)
+    print("Шаг 5: Посадка")
+    moveStraight(garagePos, 3, Enum.EasingStyle.Quad)
 
     -- Удаляем силы
     ap:Destroy(); ao:Destroy(); att0:Destroy(); att1:Destroy()
-    print("Миссия выполнена! Припарковались носом вперёд.")
+    print("Приземлились ровно!")
 end)
