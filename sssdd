@@ -2,68 +2,67 @@ task.spawn(function()
     local player = game.Players.LocalPlayer
     local TweenService = game:GetService("TweenService")
     local char = player.Character
-    
-    -- Определяем, что двигать: машину (если сидим) или самого игрока
-    local root = char:FindFirstChild("HumanoidRootPart")
+    if not char then return end
+
+    -- Определяем, что двигаем (машину или игрока)
     local human = char:FindFirstChildOfClass("Humanoid")
-    local targetToMove = root
+    local target = (human and human.SeatPart) or char:FindFirstChild("HumanoidRootPart")
+    
+    if not target then return end
 
-    if human and human.SeatPart then
-        targetToMove = human.SeatPart -- Если в машине, двигаем сиденье
-    end
-
-    if not targetToMove then return end
-
-    -- Координаты Гаража (Склад)
+    -- Координаты Гаража (База бандитов)
     local garagePos = Vector3.new(-920, 70, -1500) 
     local flyHeight = 70
 
-    -- Чистим невидимые стены в небе
+    -- Очистка невидимых стен
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
     end
 
-    -- Настройка "двигателей" (физика без гравитации)
-    local att0 = Instance.new("Attachment", targetToMove)
+    -- Настройка "двигателей"
+    local att0 = Instance.new("Attachment", target)
     local att1 = Instance.new("Attachment", workspace.Terrain)
-    att1.WorldCFrame = targetToMove.WorldCFrame
+    
+    -- ИСПРАВЛЕНО: Используем .CFrame вместо .WorldCFrame для детали
+    att1.CFrame = target.CFrame 
 
-    local ap = Instance.new("AlignPosition", targetToMove)
+    local ap = Instance.new("AlignPosition", target)
     ap.Attachment0 = att0; ap.Attachment1 = att1
     ap.MaxForce = math.huge; ap.Responsiveness = 200
 
-    local ao = Instance.new("AlignOrientation", targetToMove)
+    local ao = Instance.new("AlignOrientation", target)
     ao.Attachment0 = att0; ao.Attachment1 = att1
     ao.MaxTorque = math.huge; ao.Responsiveness = 200; ao.RigidityEnabled = true
 
-    -- Функция плавного хода
+    -- Функция перемещения
     local function move(targetCF, duration, style)
         local info = TweenInfo.new(duration, style or Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
-        local tween = TweenService:Create(att1, info, {WorldCFrame = targetCF})
+        local tween = TweenService:Create(att1, info, {CFrame = targetCF})
         tween:Play()
         tween.Completed:Wait()
     end
 
-    -- === ТВОЙ МАРШРУТ ===
+    -- === МАРШРУТ ===
 
-    print("Старт: 100 метров прямо...")
-    move(targetToMove.WorldCFrame * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
+    print("Шаг 1: 100 метров прямо")
+    move(att1.CFrame * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
 
-    print("Взлет: на 70 метров...")
-    move(att1.WorldCFrame * CFrame.new(0, flyHeight, 0), 3, Enum.EasingStyle.Quad)
+    print("Шаг 2: Вверх на 70 метров")
+    move(att1.CFrame * CFrame.new(0, flyHeight, 0), 3, Enum.EasingStyle.Quad)
 
-    print("Маневр: Поворот НАЛЕВО...")
-    -- Поворачиваемся на 90 градусов влево
-    move(att1.WorldCFrame * CFrame.Angles(0, math.rad(90), 0), 2, Enum.EasingStyle.Quad)
+    print("Шаг 3: Поворот НАЛЕВО")
+    -- Поворот на 90 градусов влево
+    move(att1.CFrame * CFrame.Angles(0, math.rad(90), 0), 2)
 
-    print("Перелет: Курс на Гараж!")
-    local finalLook = CFrame.new(garagePos, garagePos + (garagePos - att1.WorldPosition).Unit)
-    move(finalLook, 15, Enum.EasingStyle.Linear)
+    print("Шаг 4: Полет в Гараж")
+    -- Направляем нос на гараж и летим
+    local finalPos = CFrame.new(garagePos, garagePos + (garagePos - att1.Position).Unit)
+    move(finalPos, 15)
 
-    print("Финиш: Мягкая посадка...")
-    move(att1.WorldCFrame * CFrame.new(0, -flyHeight, 0), 3, Enum.EasingStyle.Quad)
+    print("Шаг 5: Посадка")
+    move(att1.CFrame * CFrame.new(0, -flyHeight, 0), 3)
 
     -- Удаляем силы
     ap:Destroy(); ao:Destroy(); att0:Destroy(); att1:Destroy()
-    print("Прибыли в гараж!")
+    print("Миссия завершена!")
 end)
