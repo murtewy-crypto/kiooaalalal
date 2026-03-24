@@ -1,6 +1,7 @@
 task.spawn(function()
     local player = game.Players.LocalPlayer
     local TweenService = game:GetService("TweenService")
+    local RunService = game:GetService("RunService")
     local char = player.Character
     if not char then return end
 
@@ -11,74 +12,78 @@ task.spawn(function()
     local car = seat.Parent
     while car and not car:IsA("Model") do car = car.Parent end
 
-    -- === ТВОИ КООРДИНАТЫ ===
+    -- === НАСТРОЙКИ (ТВОИ КООРДИНАТЫ) ===
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- 1. ПОДГОТОВКА: Приклеиваем колеса "намертво"
-    local welds = {}
+    -- 1. ПОДГОТОВКА: Запоминаем положение каждой детали относительно сиденья
+    local carParts = {}
     for _, p in pairs(car:GetDescendants()) do
         if p:IsA("BasePart") then
-            p.Anchored = true -- Замораживаем физику, чтобы не дергалась
-            -- Если это колесо, создаем жесткую сварку с сиденьем
-            if p.Name:lower():find("wheel") or p.Name:lower():find("tire") then
-                local weld = Instance.new("WeldConstraint")
-                weld.Part0 = p
-                weld.Part1 = seat
-                weld.Parent = p
-                table.insert(welds, weld)
-            end
+            -- Запоминаем смещение (Offset) относительно сиденья
+            carParts[p] = seat.CFrame:Inverse() * p.CFrame
+            p.Anchored = true
+            p.CanCollide = false -- Чтобы не цеплялись за землю в полете
         end
     end
 
-    -- Чистим невидимые стены в небе
+    -- 2. ГЛАВНЫЙ ЦИКЛ: Принудительно держим детали на месте каждый кадр
+    local locking = true
+    local connection = RunService.Heartbeat:Connect(function()
+        if not locking then return end
+        for part, offset in pairs(carParts) do
+            if part and part.Parent then
+                part.CFrame = seat.CFrame * offset
+            end
+        end
+    end)
+
+    -- Удаляем невидимые стены в небе
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
     end
 
-    -- Функция для перемещения всей модели (PivotTo сохраняет сварку)
+    -- Функция для перемещения
     local function move(targetCF, duration, style)
-        local val = Instance.new("CFrameValue")
-        val.Value = car:GetPivot()
-        local conn = val.Changed:Connect(function() car:PivotTo(val.Value) end)
-        
-        local tween = TweenService:Create(val, TweenInfo.new(duration, style or Enum.EasingStyle.Linear), {Value = targetCF})
+        local tween = TweenService:Create(seat, TweenInfo.new(duration, style or Enum.EasingStyle.Linear), {CFrame = targetCF})
         tween:Play()
         tween.Completed:Wait()
-        
-        conn:Disconnect()
-        val:Destroy()
     end
 
-    -- === МАРШРУТ (ИДЕАЛЬНО ПРЯМО И С КОЛЕСАМИ) ===
+    -- === МАРШРУТ (БЕЗ ШАНСОВ ДЛЯ ГЛЮКОВ) ===
 
-    print("1. Едем прямо 100м")
-    move(car:GetPivot() * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
+    print("1. Разгон 100м")
+    move(seat.CFrame * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
 
-    print("2. Вверх на 70м")
-    local upPos = car:GetPivot().Position + Vector3.new(0, flyHeight, 0)
-    move(CFrame.new(upPos) * (car:GetPivot() - car:GetPivot().Position), 3, Enum.EasingStyle.Quad)
+    print("2. Взлет на 70м")
+    local upPos = seat.Position + Vector3.new(0, flyHeight, 0)
+    move(CFrame.new(upPos) * (seat.CFrame - seat.Position), 3, Enum.EasingStyle.Quad)
 
     print("3. Поворот НАЛЕВО")
-    move(car:GetPivot() * CFrame.Angles(0, math.rad(90), 0), 2)
+    move(seat.CFrame * CFrame.Angles(0, math.rad(90), 0), 2)
 
-    print("4. Разворот носа на Гараж")
-    local lookCF = CFrame.lookAt(car:GetPivot().Position, Vector3.new(garagePos.X, car:GetPivot().Position.Y, garagePos.Z))
+    print("4. Наведение на Гараж")
+    local lookCF = CFrame.lookAt(seat.Position, Vector3.new(garagePos.X, seat.Position.Y, garagePos.Z))
     move(lookCF, 2)
 
-    print("5. Перелет к Гаражу")
+    print("5. Перелет")
     local flyTo = CFrame.new(garagePos + Vector3.new(0, flyHeight, 0), garagePos)
     move(flyTo, 12)
 
     print("6. Посадка")
     move(CFrame.new(garagePos) * (lookCF - lookCF.Position), 3, Enum.EasingStyle.Quad)
 
-    -- ФИНАЛ: Удаляем сварку и размораживаем
+    -- ФИНАЛ: Возвращаем всё как было
+    print("Прибыли! Возвращаем физику...")
+    locking = false
+    connection:Disconnect()
     task.wait(0.5)
-    for _, w in pairs(welds) do w:Destroy() end
-    for _, p in pairs(car:GetDescendants()) do
-        if p:IsA("BasePart") then p.Anchored = false end
+    
+    for part, _ in pairs(carParts) do
+        if part and part.Parent then
+            part.Anchored = false
+            part.CanCollide = true
+        end
     end
-
-    print("Миссия выполнена! Колеса на месте.")
+    print("Миссия завершена. Все детали на месте!")
 end)
