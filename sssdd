@@ -1,7 +1,6 @@
 task.spawn(function()
     local player = game.Players.LocalPlayer
     local TweenService = game:GetService("TweenService")
-    local RunService = game:GetService("RunService")
     local char = player.Character
     if not char then return end
 
@@ -12,50 +11,54 @@ task.spawn(function()
     local car = seat.Parent
     while car and not car:IsA("Model") do car = car.Parent end
 
-    -- === НАСТРОЙКИ (ТВОИ КООРДИНАТЫ) ===
+    -- === НАСТРОЙКИ ===
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- 1. ПОДГОТОВКА: Запоминаем положение каждой детали относительно сиденья
-    local carParts = {}
+    -- 1. ПОДГОТОВКА: Привариваем колеса БЕЗ Anchored
+    local tempWelds = {}
     for _, p in pairs(car:GetDescendants()) do
         if p:IsA("BasePart") then
-            -- Запоминаем смещение (Offset) относительно сиденья
-            carParts[p] = seat.CFrame:Inverse() * p.CFrame
-            p.Anchored = true
-            p.CanCollide = false -- Чтобы не цеплялись за землю в полете
-        end
-    end
-
-    -- 2. ГЛАВНЫЙ ЦИКЛ: Принудительно держим детали на месте каждый кадр
-    local locking = true
-    local connection = RunService.Heartbeat:Connect(function()
-        if not locking then return end
-        for part, offset in pairs(carParts) do
-            if part and part.Parent then
-                part.CFrame = seat.CFrame * offset
+            -- Если это колесо, привариваем его к сиденью
+            if p.Name:lower():find("wheel") or p.Name:lower():find("tire") then
+                local weld = Instance.new("WeldConstraint")
+                weld.Part0 = p
+                weld.Part1 = seat
+                weld.Parent = p
+                table.insert(tempWelds, weld)
             end
         end
-    end)
-
-    -- Удаляем невидимые стены в небе
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
     end
 
-    -- Функция для перемещения
+    -- 2. Стабилизация физики (чтобы машина не падала, но и не была Anchored)
+    local bv = Instance.new("BodyVelocity", seat)
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.Velocity = Vector3.new(0, 0, 0)
+
+    local bg = Instance.new("BodyGyro", seat)
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.CFrame = seat.CFrame
+
+    -- Функция перемещения (двигаем физический объект через CFrame)
     local function move(targetCF, duration, style)
         local tween = TweenService:Create(seat, TweenInfo.new(duration, style or Enum.EasingStyle.Linear), {CFrame = targetCF})
+        
+        -- Синхронизируем гироскоп с поворотом
+        local connection = game:GetService("RunService").Heartbeat:Connect(function()
+            bg.CFrame = seat.CFrame
+        end)
+        
         tween:Play()
         tween.Completed:Wait()
+        connection:Disconnect()
     end
 
-    -- === МАРШРУТ (БЕЗ ШАНСОВ ДЛЯ ГЛЮКОВ) ===
+    -- === МАРШРУТ (БЕЗ ANCHORED) ===
 
-    print("1. Разгон 100м")
+    print("1. Едем прямо (колеса на месте)")
     move(seat.CFrame * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
 
-    print("2. Взлет на 70м")
+    print("2. Взлет вверх на 70м")
     local upPos = seat.Position + Vector3.new(0, flyHeight, 0)
     move(CFrame.new(upPos) * (seat.CFrame - seat.Position), 3, Enum.EasingStyle.Quad)
 
@@ -73,17 +76,12 @@ task.spawn(function()
     print("6. Посадка")
     move(CFrame.new(garagePos) * (lookCF - lookCF.Position), 3, Enum.EasingStyle.Quad)
 
-    -- ФИНАЛ: Возвращаем всё как было
-    print("Прибыли! Возвращаем физику...")
-    locking = false
-    connection:Disconnect()
+    -- ФИНАЛ: Удаляем сварку и силы
+    print("Прибыли! Убираем фиксацию...")
     task.wait(0.5)
+    for _, w in pairs(tempWelds) do w:Destroy() end
+    bv:Destroy()
+    bg:Destroy()
     
-    for part, _ in pairs(carParts) do
-        if part and part.Parent then
-            part.Anchored = false
-            part.CanCollide = true
-        end
-    end
-    print("Миссия завершена. Все детали на месте!")
+    print("Все готово. Машина цела!")
 end)
