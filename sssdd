@@ -1,4 +1,3 @@
--- Код для файла sssdd на GitHub
 task.spawn(function()
     local player = game.Players.LocalPlayer
     local TweenService = game:GetService("TweenService")
@@ -6,82 +5,71 @@ task.spawn(function()
     local human = char and char:FindFirstChildOfClass("Humanoid")
     local seat = human and human.SeatPart
     
-    -- Проверка на наличие машины
+    -- 1. Проверка: сидим ли мы в ПОЛИЦЕЙСКОЙ машине
     if not (seat and seat:IsA("VehicleSeat")) then 
-        print("Ошибка: Сядь в машину на место водителя!")
+        print("Сядь в машину!")
         return 
     end
 
     local car = seat.Parent
     while car and not car:IsA("Model") do car = car.Parent end
-
-    -- Настройки маршрута (Координаты Гаража Бандитов)
-    local garagePos = Vector3.new(-920, 180, -1500) 
-    local flyHeight = 180
-
-    -- 1. Очистка невидимых стен и зон смерти в небе
-    for _, part in pairs(workspace:GetDescendants()) do
-        if part:IsA("BasePart") and (part.Name == "InvisPart" or part.Name == "KillPart") then
-            part:Destroy()
-        end
+    
+    if not car.Name:lower():find("police") then
+        print("Это не полицейская машина! Скрипт только для полиции.")
+        return
     end
 
-    -- 2. Подготовка физики (чтобы машина летела ровно и с колесами)
-    local attachment = Instance.new("Attachment", seat)
-    local targetAttachment = Instance.new("Attachment", workspace.Terrain)
-    targetAttachment.WorldCFrame = seat.WorldCFrame
+    -- 2. Настройки (Координаты гаража бандитов/склада)
+    local garagePos = Vector3.new(-920, 70, -1500) 
+    local flyHeight = 70
+
+    -- Очистка невидимых стен в небе
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
+    end
+
+    -- 3. Создание физических "двигателей"
+    local att0 = Instance.new("Attachment", seat)
+    local att1 = Instance.new("Attachment", workspace.Terrain)
+    att1.WorldCFrame = seat.WorldCFrame
 
     local ap = Instance.new("AlignPosition", seat)
-    ap.Attachment0 = attachment; ap.Attachment1 = targetAttachment
+    ap.Attachment0 = att0; ap.Attachment1 = att1
     ap.MaxForce = math.huge; ap.Responsiveness = 200
 
     local ao = Instance.new("AlignOrientation", seat)
-    ao.Attachment0 = attachment; ao.Attachment1 = targetAttachment
+    ao.Attachment0 = att0; ao.Attachment1 = att1
     ao.MaxTorque = math.huge; ao.Responsiveness = 200; ao.RigidityEnabled = true
 
-    -- 3. Определение стилей анимации (БЕЗ ОШИБОК)
-    local infoDrive = TweenInfo.new(3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local infoLift = TweenInfo.new(4, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
-    local infoFly = TweenInfo.new(15, Enum.EasingStyle.Linear)
-    local infoLand = TweenInfo.new(3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    -- Функция для плавного движения
+    local function move(targetCF, duration, style)
+        local info = TweenInfo.new(duration, style or Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
+        local tween = TweenService:Create(att1, info, {WorldCFrame = targetCF})
+        tween:Play()
+        tween.Completed:Wait()
+    end
 
-    -- ФАЗА 1: Разгон 100 метров вперед
-    print("Автопилот: Разгон...")
-    local driveForward = TweenService:Create(targetAttachment, infoDrive, {
-        WorldCFrame = seat.WorldCFrame * CFrame.new(0, 0, -100)
-    })
-    driveForward:Play()
-    driveForward.Completed:Wait()
+    -- === МАРШРУТ ===
 
-    -- ФАЗА 2: Взлет и разворот на цель
-    print("Автопилот: Взлет и разворот...")
-    local upPos = targetAttachment.WorldPosition + Vector3.new(0, flyHeight, 0)
-    local lookAtTarget = CFrame.new(upPos, Vector3.new(garagePos.X, upPos.Y, garagePos.Z))
-    
-    local liftAndTurn = TweenService:Create(targetAttachment, infoLift, {
-        WorldCFrame = lookAtTarget
-    })
-    liftAndTurn:Play()
-    liftAndTurn.Completed:Wait()
+    print("Шаг 1: Едем 100 метров прямо...")
+    move(seat.WorldCFrame * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
 
-    -- ФАЗА 3: Прямой перелет до Гаража
-    print("Автопилот: Перелет...")
-    local finalCFrame = CFrame.new(garagePos, garagePos + (garagePos - upPos).Unit)
-    local flyToGarage = TweenService:Create(targetAttachment, infoFly, {
-        WorldCFrame = finalCFrame
-    })
-    flyToGarage:Play()
-    flyToGarage.Completed:Wait()
+    print("Шаг 2: Взлет на 70 метров...")
+    move(att1.WorldCFrame * CFrame.new(0, flyHeight, 0), 3, Enum.EasingStyle.Quad)
 
-    -- ФАЗА 4: Мягкая посадка
-    print("Автопилот: Посадка...")
-    local land = TweenService:Create(targetAttachment, infoLand, {
-        WorldCFrame = targetAttachment.WorldCFrame * CFrame.new(0, -flyHeight, 0)
-    })
-    land:Play()
-    land.Completed:Wait()
+    print("Шаг 3: Поворот налево...")
+    -- Поворот на 90 градусов влево (math.rad(90))
+    move(att1.WorldCFrame * CFrame.Angles(0, math.rad(90), 0), 2, Enum.EasingStyle.Quad)
 
-    -- Завершение: удаляем временные объекты
-    ap:Destroy(); ao:Destroy(); attachment:Destroy(); targetAttachment:Destroy()
-    print("Автопилот: Прибыли в пункт назначения!")
+    print("Шаг 4: Перелет к Гаражу Бандитов...")
+    -- Направляем нос машины к гаражу и летим по прямой
+    local finalLook = CFrame.new(garagePos, garagePos + (garagePos - att1.WorldPosition).Unit)
+    move(finalLook, 15, Enum.EasingStyle.Linear)
+
+    print("Шаг 5: Мягкая посадка...")
+    move(att1.WorldCFrame * CFrame.new(0, -flyHeight, 0), 3, Enum.EasingStyle.Quad)
+
+    -- Удаляем силы, возвращаем физику
+    ap:Destroy(); ao:Destroy(); att0:Destroy(); att1:Destroy()
+    print("Миссия выполнена!")
 end)
