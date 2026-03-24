@@ -2,69 +2,65 @@ task.spawn(function()
     local player = game.Players.LocalPlayer
     local TweenService = game:GetService("TweenService")
     local char = player.Character
-    if not char then return end
-
-    local human = char:FindFirstChildOfClass("Humanoid")
-    local seat = human and human.SeatPart
-    if not seat then print("Сядь в машину!") return end
-
+    local seat = char and char:FindFirstChildOfClass("Humanoid") and char:FindFirstChildOfClass("Humanoid").SeatPart
+    
+    if not (seat and seat:IsA("VehicleSeat")) then return end
     local car = seat.Parent
-    while car and not car:IsA("Model") do car = car.Parent end
 
-    -- === НАСТРОЙКИ ===
+    -- Настройки
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- 1. ЗАМОРАЖИВАЕМ МАШИНУ (Чтобы не ломалась и не падала)
-    for _, p in pairs(car:GetDescendants()) do
-        if p:IsA("BasePart") then p.Anchored = true end
-    end
+    -- 1. Создаем "двигатели" (Velocity не ломает колеса)
+    local bv = Instance.new("BodyVelocity", seat)
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.Velocity = Vector3.new(0, 0, 0)
 
-    -- Функция для плавного движения всей модели БЕЗ физики
-    local function move(targetCF, duration, style)
-        local flyValue = Instance.new("CFrameValue")
-        flyValue.Value = car:GetPivot()
+    local bg = Instance.new("BodyGyro", seat)
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.CFrame = seat.CFrame
+
+    -- Функция для плавного полета через изменение скорости
+    local function fly(targetPos, speed)
+        local distance = (targetPos - seat.Position).Magnitude
+        local duration = distance / speed
         
-        local connection = flyValue.Changed:Connect(function()
-            car:PivotTo(flyValue.Value)
-        end)
-
-        local tween = TweenService:Create(flyValue, TweenInfo.new(duration, style or Enum.EasingStyle.Linear), {Value = targetCF})
-        tween:Play()
-        tween.Completed:Wait()
+        -- Поворачиваем нос строго горизонтально к цели
+        local lookTarget = Vector3.new(targetPos.X, seat.Position.Y, targetPos.Z)
+        bg.CFrame = CFrame.lookAt(seat.Position, lookTarget)
         
-        connection:Disconnect()
-        flyValue:Destroy()
+        -- Задаем скорость движения
+        bv.Velocity = (targetPos - seat.Position).Unit * speed
+        task.wait(duration)
+        bv.Velocity = Vector3.new(0, 0, 0)
     end
 
-    -- === МАРШРУТ (ИДЕАЛЬНО ПРЯМО) ===
+    -- === МАРШРУТ (КОЛЕСА БУДУТ НА МЕСТЕ) ===
 
-    print("1. Едем прямо 100м")
-    move(car:GetPivot() * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
+    print("1. Разгон 100м")
+    fly((seat.CFrame * CFrame.new(0, 0, -100)).Position, 30)
 
-    print("2. Взлет вверх на 70м")
-    local p2 = car:GetPivot().Position + Vector3.new(0, flyHeight, 0)
-    -- Сохраняем поворот, просто поднимаем
-    move(CFrame.new(p2) * (car:GetPivot() - car:GetPivot().Position), 3, Enum.EasingStyle.Quad)
+    print("2. Взлет вверх")
+    fly(seat.Position + Vector3.new(0, flyHeight, 0), 25)
 
-    print("3. Поворот НАЛЕВО на 90 градусов")
-    move(car:GetPivot() * CFrame.Angles(0, math.rad(90), 0), 2, Enum.EasingStyle.Quad)
+    print("3. Поворот НАЛЕВО")
+    bg.CFrame = bg.CFrame * CFrame.Angles(0, math.rad(90), 0)
+    task.wait(1.5)
 
-    print("4. Разворот к Гаражу и Перелет")
-    -- Сначала смотрим на гараж (горизонтально)
-    local targetPosOnHeight = Vector3.new(garagePos.X, car:GetPivot().Position.Y, garagePos.Z)
-    move(CFrame.lookAt(car:GetPivot().Position, targetPosOnHeight), 2)
-    
-    -- Летим к точке над гаражом
-    move(CFrame.lookAt(targetPosOnHeight, targetPosOnHeight + (targetPosOnHeight - car:GetPivot().Position).Unit), 12)
+    print("4. Наведение на Гараж")
+    local garageAtHeight = Vector3.new(garagePos.X, seat.Position.Y, garagePos.Z)
+    bg.CFrame = CFrame.lookAt(seat.Position, garageAtHeight)
+    task.wait(1.5)
 
-    print("5. Посадка")
-    -- Опускаемся и размораживаем
-    move(CFrame.new(garagePos, garagePos + (targetPosOnHeight - car:GetPivot().Position).Unit), 3)
+    print("5. Перелет")
+    fly(garageAtHeight, 50) -- Летим быстрее
 
-    -- 2. ВОЗВРАЩАЕМ ФИЗИКУ
-    for _, p in pairs(car:GetDescendants()) do
-        if p:IsA("BasePart") then p.Anchored = false end
-    end
-    print("Прибыли! Физика включена.")
+    print("6. Посадка")
+    fly(garagePos, 20)
+
+    -- Финал: Удаляем силы плавно
+    task.wait(0.5)
+    bv:Destroy()
+    bg:Destroy()
+    print("Приехали! Все детали на месте.")
 end)
