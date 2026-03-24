@@ -4,78 +4,82 @@ task.spawn(function()
     local human = char and char:FindFirstChildOfClass("Humanoid")
     local seat = human and human.SeatPart
     
+    -- Проверка: сидим ли мы в машине
     if not (seat and seat:IsA("VehicleSeat")) then 
         print("ОШИБКА: Сначала сядь в машину!")
         return 
     end
 
-    -- Твои координаты
+    -- Твои координаты гаража
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- 1. Очистка старых сил, если они остались
-    for _, v in pairs(seat:GetChildren()) do
-        if v:IsA("BodyVelocity") or v:IsA("BodyGyro") then v:Destroy() end
+    -- 1. Удаляем старые силы, чтобы не мешались
+    for _, child in pairs(seat:GetChildren()) do
+        if child:IsA("BodyVelocity") or child:IsA("BodyGyro") then
+            child:Destroy()
+        end
     end
 
-    -- 2. Создаем "Анти-гравитацию" и "Гироскоп" (для ровного полета)
-    local bv = Instance.new("BodyVelocity", seat)
+    -- 2. Создаем новые силы (используем только .CFrame)
+    local bv = Instance.new("BodyVelocity")
     bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bv.Velocity = Vector3.new(0, 0, 0)
+    bv.Parent = seat
 
-    local bg = Instance.new("BodyGyro", seat)
+    local bg = Instance.new("BodyGyro")
     bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-    bg.D = 500 
-    bg.CFrame = seat.CFrame -- Фиксируем текущий поворот
+    bg.D = 500
+    bg.CFrame = seat.CFrame -- Используем просто .CFrame!
+    bg.Parent = seat
 
-    -- === МАРШРУТ ===
+    -- === ТВОЙ МАРШРУТ ===
 
-    -- ФАЗА 1: 100 метров прямо по земле
-    print("Этап 1: Разгон прямо")
+    -- ФАЗА 1: 100 метров прямо
+    print("Этап 1: Прямо")
     bv.Velocity = seat.CFrame.LookVector * 25
-    task.wait(4) -- Едем 4 секунды (около 100м)
+    task.wait(4) 
 
-    -- ФАЗА 2: Ровный взлет вверх на 70 метров
-    print("Этап 2: Взлет на 70м")
+    -- ФАЗА 2: Взлет вверх на 70 метров
+    print("Этап 2: Вверх")
     bv.Velocity = Vector3.new(0, 25, 0)
     task.wait(flyHeight / 25)
     bv.Velocity = Vector3.new(0, 0, 0)
 
-    -- ФАЗА 3: Поворот носа строго НАЛЕВО (на 90 градусов)
-    print("Этап 3: Поворот налево")
+    -- ФАЗА 3: Поворот НАЛЕВО
+    print("Этап 3: Налево")
     bg.CFrame = bg.CFrame * CFrame.Angles(0, math.rad(90), 0)
     task.wait(2)
 
-    -- ФАЗА 4: Наведение на Гараж и ПЕРЕЛЕТ (без наклонов)
-    print("Этап 4: Летим к Гаражу")
-    -- Вычисляем направление на гараж, но делаем его ПЛОСКИМ (без наклона вниз)
-    local direction = (garagePos - seat.Position).Unit
-    local flatDirection = Vector3.new(direction.X, 0, direction.Z).Unit
+    -- ФАЗА 4: Полет к Гаражу (Горизонтально!)
+    print("Этап 4: К гаражу")
+    -- Вычисляем направление, игнорируя высоту (Y = 0), чтобы нос не задирался
+    local currentPos = seat.Position
+    local targetOnHeight = Vector3.new(garagePos.X, currentPos.Y, garagePos.Z)
+    local direction = (targetOnHeight - currentPos).Unit
     
-    -- Разворачиваем нос на гараж
-    bg.CFrame = CFrame.lookAt(seat.Position, seat.Position + flatDirection)
+    -- Поворачиваем нос на цель
+    bg.CFrame = CFrame.lookAt(currentPos, currentPos + direction)
     task.wait(1.5)
     
-    -- Летим вперед на большой скорости
-    bv.Velocity = flatDirection * 55
-    
-    -- Ждем, пока не окажемся над точкой гаража
+    -- Летим
+    bv.Velocity = direction * 55
     while (Vector3.new(garagePos.X, seat.Position.Y, garagePos.Z) - seat.Position).Magnitude > 10 do
         task.wait()
     end
     bv.Velocity = Vector3.new(0, 0, 0)
 
-    -- ФАЗА 5: Мягкая посадка
+    -- ФАЗА 5: Приземление
     print("Этап 5: Посадка")
     bv.Velocity = Vector3.new(0, -20, 0)
-    while (seat.Position.Y - garagePos.Y) > 5 do
+    while (seat.Position.Y - garagePos.Y) > 3 do
         task.wait()
     end
 
-    -- ФИНАЛ: Тормозим и удаляем силы
+    -- ФИНАЛ
     bv.Velocity = Vector3.new(0, 0, 0)
-    task.wait(1) -- Ждем стабилизации, чтобы не откинуло назад
+    task.wait(1)
     bv:Destroy()
     bg:Destroy()
-    print("Успешно приземлились!")
+    print("Приземление окончено!")
 end)
