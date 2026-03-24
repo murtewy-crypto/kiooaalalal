@@ -8,11 +8,11 @@ task.spawn(function()
     local target = (human and human.SeatPart) or char:FindFirstChild("HumanoidRootPart")
     if not target then return end
 
-    -- Настройки маршрута
-    local garagePos = Vector3.new(-920, 70, -1500) -- Координаты гаража
-    local flyHeight = 70
+    -- === ТВОИ ТОЧНЫЕ КООРДИНАТЫ ГАРАЖА ===
+    local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
+    local flyHeight = 70 -- Высота полета (в сумме будет около 160)
 
-    -- Очистка невидимых стен
+    -- Чистим невидимые стены
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
     end
@@ -37,30 +37,31 @@ task.spawn(function()
         tween.Completed:Wait()
     end
 
-    -- === МАРШРУТ ===
+    -- === МАРШРУТ ПОБЕГА ===
 
-    print("Шаг 1: 100 метров прямо")
+    print("Шаг 1: 100м прямо")
     move(att1.CFrame * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
 
-    print("Шаг 2: Вверх на 70 метров")
+    print("Шаг 2: Взлет на 70м")
     move(att1.CFrame * CFrame.new(0, flyHeight, 0), 3, Enum.EasingStyle.Quad)
 
     print("Шаг 3: Поворот корпуса НАЛЕВО")
-    -- Поворачиваем нос машины на 90 градусов влево
-    move(att1.CFrame * CFrame.Angles(0, math.rad(90), 0), 2, Enum.EasingStyle.Quad)
+    move(att1.CFrame * CFrame.Angles(0, math.rad(90), 0), 2)
 
-    print("Шаг 4: Прямой перелет НОСОМ к Гаражу")
-    -- ВАЖНО: Создаем CFrame, который смотрит прямо на гараж
-    local finalCFrame = CFrame.new(att1.Position, Vector3.new(garagePos.X, att1.Position.Y, garagePos.Z))
-    -- Сначала плавно доворачиваем нос на цель
-    move(finalCFrame, 2)
-    -- Теперь летим вперед до самой точки
-    move(CFrame.new(garagePos, garagePos + (garagePos - att1.Position).Unit), 15)
+    print("Шаг 4: Наведение НОСА на Гараж")
+    -- Плавно разворачиваем машину лицом к твоим координатам
+    local lookAtTarget = CFrame.new(att1.Position, Vector3.new(garagePos.X, att1.Position.Y, garagePos.Z))
+    move(lookAtTarget, 2.5, Enum.EasingStyle.Quad)
 
-    print("Шаг 5: Посадка")
-    move(att1.CFrame * CFrame.new(0, -flyHeight, 0), 3)
+    print("Шаг 5: ПРЯМОЙ ПЕРЕЛЕТ")
+    -- Летим ровно в ту точку, которую ты скинул
+    local finalFly = CFrame.new(garagePos + Vector3.new(0, flyHeight, 0), garagePos)
+    move(finalFly, 12, Enum.EasingStyle.Linear)
 
-    -- Удаляем силы
+    print("Шаг 6: Посадка")
+    move(CFrame.new(garagePos), 3, Enum.EasingStyle.Quad)
+
+    -- Удаляем силы, возвращаем физику
     ap:Destroy(); ao:Destroy(); att0:Destroy(); att1:Destroy()
     print("Миссия выполнена! Мы в гараже.")
 end)
