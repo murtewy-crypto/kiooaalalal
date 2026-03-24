@@ -11,38 +11,32 @@ task.spawn(function()
     local car = seat.Parent
     while car and not car:IsA("Model") do car = car.Parent end
 
-    -- === НАСТРОЙКИ (ТВОИ КООРДИНАТЫ ГАРАЖА) ===
+    -- === ТВОИ КООРДИНАТЫ ===
     local garagePos = Vector3.new(-887.32, 93.82, 2154.55) 
     local flyHeight = 70 
 
-    -- 1. ПОДГОТОВКА: Замораживаем машину и чистим стены
-    local wheels = {}
+    -- 1. ПОДГОТОВКА: Приклеиваем колеса "намертво"
+    local welds = {}
     for _, p in pairs(car:GetDescendants()) do
-        if p:IsA("BasePart") then 
-            p.Anchored = true 
-            -- Сохраняем колеса для анимации вращения
+        if p:IsA("BasePart") then
+            p.Anchored = true -- Замораживаем физику, чтобы не дергалась
+            -- Если это колесо, создаем жесткую сварку с сиденьем
             if p.Name:lower():find("wheel") or p.Name:lower():find("tire") then
-                table.insert(wheels, p)
+                local weld = Instance.new("WeldConstraint")
+                weld.Part0 = p
+                weld.Part1 = seat
+                weld.Parent = p
+                table.insert(welds, weld)
             end
         end
     end
 
+    -- Чистим невидимые стены в небе
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") and (v.Name == "InvisPart" or v.Name == "KillPart") then v:Destroy() end
     end
 
-    -- Анимация крутящихся колес (чтобы они "были")
-    local spinning = true
-    task.spawn(function()
-        while spinning do
-            for _, wheel in pairs(wheels) do
-                wheel.CFrame = wheel.CFrame * CFrame.Angles(0.3, 0, 0)
-            end
-            task.wait()
-        end
-    end)
-
-    -- Функция для ИДЕАЛЬНО ровного перемещения
+    -- Функция для перемещения всей модели (PivotTo сохраняет сварку)
     local function move(targetCF, duration, style)
         local val = Instance.new("CFrameValue")
         val.Value = car:GetPivot()
@@ -56,35 +50,35 @@ task.spawn(function()
         val:Destroy()
     end
 
-    -- === МАРШРУТ (БЕЗ ГЛЮКОВ) ===
+    -- === МАРШРУТ (ИДЕАЛЬНО ПРЯМО И С КОЛЕСАМИ) ===
 
     print("1. Едем прямо 100м")
     move(car:GetPivot() * CFrame.new(0, 0, -100), 4, Enum.EasingStyle.Quad)
 
-    print("2. Ровно вверх на 70м")
+    print("2. Вверх на 70м")
     local upPos = car:GetPivot().Position + Vector3.new(0, flyHeight, 0)
     move(CFrame.new(upPos) * (car:GetPivot() - car:GetPivot().Position), 3, Enum.EasingStyle.Quad)
 
     print("3. Поворот НАЛЕВО")
     move(car:GetPivot() * CFrame.Angles(0, math.rad(90), 0), 2)
 
-    print("4. Разворот и Перелет к Гаражу")
-    -- Сначала смотрим на цель
+    print("4. Разворот носа на Гараж")
     local lookCF = CFrame.lookAt(car:GetPivot().Position, Vector3.new(garagePos.X, car:GetPivot().Position.Y, garagePos.Z))
     move(lookCF, 2)
-    -- Летим носом вперед
+
+    print("5. Перелет к Гаражу")
     local flyTo = CFrame.new(garagePos + Vector3.new(0, flyHeight, 0), garagePos)
     move(flyTo, 12)
 
-    print("5. Посадка в Гараж")
+    print("6. Посадка")
     move(CFrame.new(garagePos) * (lookCF - lookCF.Position), 3, Enum.EasingStyle.Quad)
 
-    -- ФИНАЛ: Останавливаем колеса, возвращаем физику
-    spinning = false
+    -- ФИНАЛ: Удаляем сварку и размораживаем
     task.wait(0.5)
+    for _, w in pairs(welds) do w:Destroy() end
     for _, p in pairs(car:GetDescendants()) do
         if p:IsA("BasePart") then p.Anchored = false end
     end
 
-    print("Миссия завершена! Машина здесь.")
+    print("Миссия выполнена! Колеса на месте.")
 end)
